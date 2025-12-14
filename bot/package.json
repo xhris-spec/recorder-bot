@@ -1,0 +1,13 @@
+{
+  "name": "recorder-bot",
+  "version": "0.1.0",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.0.0",
+    "@discordjs/voice": "^0.14.0",
+    "dotenv": "^16.0.0"
+  }
+}

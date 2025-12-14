@@ -1,0 +1,29 @@
+version: '3.8'
+services:
+  bot:
+    build: ./bot
+    container_name: recorder_bot
+    restart: unless-stopped
+    environment:
+      - DISCORD_TOKEN=${DISCORD_TOKEN}
+    volumes:
+      - ./bot/src:/app/src
+
+  asr:
+    build: ./asr
+    container_name: recorder_asr
+    restart: on-failure
+    volumes:
+      - ./asr/src:/app/src
+
+  translate:
+    build: ./translate
+    container_name: recorder_translate
+    ports:
+      - "5000:5000"
+    restart: on-failure
+
+  summarizer:
+    build: ./summarizer
+    container_name: recorder_summarizer
+    restart: on-failure
