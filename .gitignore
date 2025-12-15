@@ -4,3 +4,4 @@ __pycache__/
 dist/
 *.pyc
 .claude/
+bot/recordings/
