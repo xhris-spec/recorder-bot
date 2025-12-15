@@ -5,6 +5,12 @@ const fs = require('fs');
 const path = require('path');
 const prism = require('prism-media');
 const { convertSessionPCMtoWAV } = require('./audioConverter');
+const { getUserLocale, t } = require('./i18n');
+
+// Map para guardar el idioma detectado de cada usuario
+const userLocales = new Map();
+// Map para guardar el idioma preferido por servidor (fallback)
+const serverLocales = new Map();
 
 // Necesitamos MessageContent para leer mensajes con prefijo
 const client = new Client({
@@ -38,10 +44,29 @@ client.on('messageCreate', async (message) => {
   const args = message.content.slice(PREFIX.length).trim().split(/\s+/);
   const cmd = args.shift().toLowerCase();
 
+  // Obtener idioma: primero del usuario guardado, luego del servidor, por defecto español
+  const locale = userLocales.get(message.author.id) || serverLocales.get(message.guildId) || 'es';
+
+  if (cmd === 'lang' || cmd === 'language' || cmd === 'idioma') {
+    const newLang = args[0]?.toLowerCase();
+    
+    if (!newLang || !['es', 'en'].includes(newLang)) {
+      await message.reply(`${locale === 'es' ? '🌐 **Idioma actual:** Español\n\nUsa `r!lang es` o `r!lang en` para cambiar.' : '🌐 **Current language:** English\n\nUse `r!lang es` or `r!lang en` to change.'}`);
+      return;
+    }
+    
+    serverLocales.set(message.guildId, newLang);
+    const msg = newLang === 'es' 
+      ? '✅ Idioma cambiado a **Español**' 
+      : '✅ Language changed to **English**';
+    await message.reply(msg);
+    return;
+  }
+
   if (cmd === 'record') {
     // Verificar que el usuario está en un canal de voz
     if (!message.member?.voice.channel) {
-      await message.reply('❌ Debes estar en un canal de voz para usar este comando.');
+      await message.reply(t('mustBeInVoice', locale));
       return;
     }
 
@@ -52,26 +77,26 @@ client.on('messageCreate', async (message) => {
       .addComponents(
         new ButtonBuilder()
           .setCustomId('record_start')
-          .setLabel('▶️ Start')
+          .setLabel(t('buttonStart', locale))
           .setStyle(ButtonStyle.Success)
-          .setDisabled(isRecording), // Deshabilitar si ya está grabando
+          .setDisabled(isRecording),
         new ButtonBuilder()
           .setCustomId('record_stop')
-          .setLabel('⏹️ Stop')
+          .setLabel(t('buttonStop', locale))
           .setStyle(ButtonStyle.Danger)
-          .setDisabled(!isRecording) // Deshabilitar si no está grabando
+          .setDisabled(!isRecording)
       );
 
-    const status = isRecording ? '🔴 **Grabación activa**' : '⚫ **Sin grabar**';
+    const status = isRecording ? t('recordingActive', locale) : t('notRecording', locale);
     await message.reply({
-      content: `${status}\n\nPulsa los botones para controlar la grabación:`,
+      content: `${status}\n\n${t('controlButtons', locale)}`,
       components: [row]
     });
   }
   else if (cmd === 'recordings') {
     // Listar grabaciones disponibles
     if (!fs.existsSync(AUDIO_DIR)) {
-      await message.reply('📁 No hay grabaciones disponibles.');
+      await message.reply(t('noRecordings', locale));
       return;
     }
 
@@ -80,14 +105,14 @@ client.on('messageCreate', async (message) => {
     });
 
     if (sessions.length === 0) {
-      await message.reply('📁 No hay grabaciones disponibles.');
+      await message.reply(t('noRecordings', locale));
       return;
     }
 
     const list = sessions.slice(-10).map((session, idx) => {
       const sessionPath = path.join(AUDIO_DIR, session);
       const wavFiles = fs.readdirSync(sessionPath).filter(f => f.endsWith('.wav')).length;
-      return `${idx + 1}. \`${session}\` (${wavFiles} archivos)`;
+      return `${idx + 1}. \`${session}\` (${wavFiles} ${t('files', locale)})`;
     }).join('\n');
 
     // Crear botones de descarga para las últimas 5 sesiones
@@ -105,34 +130,50 @@ client.on('messageCreate', async (message) => {
     }
 
     await message.reply({
-      content: `📁 **Últimas grabaciones:**\n${list}\n\n**Pulsa un botón para descargar:**`,
+      content: `${t('latestRecordings', locale)}\n${list}\n\n${t('clickToDownload', locale)}`,
       components: rows
     });
   }
   else if (cmd === 'hello') {
-    await message.reply(`Hola, ${message.author.username}!`);
+    await message.reply(`${t('hello', locale)}, ${message.author.username}!`);
   }
   else if (cmd === 'help' || cmd === 'commands') {
-    const helpMessage = `
-📋 **Comandos disponibles:**
+    const helpMessage = locale === 'es' ? `
+${t('helpTitle', locale)}
 
-🎙️ **Grabación:**
-\`r!record\` - Mostrar controles de grabación (Start/Stop)
+${t('helpRecording', locale)}
+\`r!record\` - ${t('helpRecord', locale)}
+\`r!lang <es|en>\` - Cambiar idioma del bot
 
-📁 **Gestión de archivos:**
-\`r!recordings\` - Listar y descargar grabaciones anteriores
+${t('helpFiles', locale)}
+\`r!recordings\` - ${t('helpRecordings', locale)}
 
-💬 **Otros:**
-\`r!hello\` - Saludo
-\`r!help\` - Mostrar este mensaje
+${t('helpOthers', locale)}
+\`r!hello\` - ${t('helpHello', locale)}
+\`r!help\` - ${t('helpHelp', locale)}
 
-**Nota:** Debes estar en un canal de voz para usar \`r!record\`
+${t('helpNote', locale)} \`r!record\`
+    ` : `
+${t('helpTitle', locale)}
+
+${t('helpRecording', locale)}
+\`r!record\` - ${t('helpRecord', locale)}
+\`r!lang <es|en>\` - Change bot language
+
+${t('helpFiles', locale)}
+\`r!recordings\` - ${t('helpRecordings', locale)}
+
+${t('helpOthers', locale)}
+\`r!hello\` - ${t('helpHello', locale)}
+\`r!help\` - ${t('helpHelp', locale)}
+
+${t('helpNote', locale)} \`r!record\`
     `;
     await message.reply(helpMessage);
   }
   else {
     // Comando desconocido
-    await message.reply(`❌ Comando \`${cmd}\` no reconocido.\n\nUsa \`r!help\` para ver los comandos disponibles.`);
+    await message.reply(`❌ ${t('unknownCommand', locale)} \`${cmd}\` ${t('unknownCommandHelp', locale)}`);
   }
 });
 
@@ -142,6 +183,14 @@ client.on('interactionCreate', async (interaction) => {
 
   const { customId, guildId, member } = interaction;
 
+  // Detectar idioma del usuario automáticamente
+  const locale = getUserLocale(interaction);
+  
+  // Guardar el idioma detectado del usuario para futuros comandos de texto
+  if (interaction.user?.id) {
+    userLocales.set(interaction.user.id, locale);
+  }
+
   // Handler para botones de descarga
   if (customId.startsWith('download_')) {
     const sessionId = customId.replace('download_', '');
@@ -149,7 +198,7 @@ client.on('interactionCreate', async (interaction) => {
 
     if (!fs.existsSync(sessionPath)) {
       await interaction.reply({
-        content: '❌ Grabación no encontrada.',
+        content: t('recordingNotFound', locale),
         flags: MessageFlags.Ephemeral
       });
       return;
@@ -158,7 +207,7 @@ client.on('interactionCreate', async (interaction) => {
     const wavFiles = fs.readdirSync(sessionPath).filter(f => f.endsWith('.wav'));
     if (wavFiles.length === 0) {
       await interaction.reply({
-        content: '❌ No hay archivos WAV en esta grabación.',
+        content: t('noWavFiles', locale),
         flags: MessageFlags.Ephemeral
       });
       return;
@@ -169,7 +218,7 @@ client.on('interactionCreate', async (interaction) => {
 
     if (fileSize > 8 * 1024 * 1024) {
       await interaction.reply({
-        content: `❌ El archivo es demasiado grande para Discord (${(fileSize / 1024 / 1024).toFixed(2)}MB > 8MB).\n\nUsa \`r!download ${sessionId}\` en el servidor donde está alojado el bot.`,
+        content: `❌ ${t('fileTooLarge', locale)} (${(fileSize / 1024 / 1024).toFixed(2)}MB > 8MB).`,
         flags: MessageFlags.Ephemeral
       });
       return;
@@ -178,13 +227,13 @@ client.on('interactionCreate', async (interaction) => {
     try {
       await interaction.reply({
         files: [wavFile],
-        content: `📥 **Descarga:** \`${sessionId}\`\n📄 Archivo: \`${wavFiles[0]}\` (${(fileSize / 1024 / 1024).toFixed(2)}MB)`,
+        content: `📥 **${t('download', locale)}:** \`${sessionId}\`\n📄 ${t('file', locale)}: \`${wavFiles[0]}\` (${(fileSize / 1024 / 1024).toFixed(2)}MB)`,
         flags: MessageFlags.Ephemeral
       });
     } catch (error) {
       console.error('Error al descargar:', error);
       await interaction.reply({
-        content: '❌ Error al descargar el archivo.',
+        content: t('downloadError', locale),
         flags: MessageFlags.Ephemeral
       });
     }
@@ -194,7 +243,7 @@ client.on('interactionCreate', async (interaction) => {
   // Verificar que el usuario está en un canal de voz
   if (!member?.voice.channel) {
     await interaction.reply({
-      content: '❌ Debes estar en un canal de voz para usar este comando.',
+      content: t('mustBeInVoice', locale),
       flags: MessageFlags.Ephemeral
     });
     return;
